@@ -1,0 +1,20 @@
+type Query {
+  room(id: ID!): Room
+}
+
+type Room {
+  id: ID!
+  name: String!
+  # The "child" record. It is a SEPARATE store record (it has its own id), linked
+  # from Room. GC collects it when the only retained operation that selected it is
+  # released — even though Room itself survives via another retained operation.
+  # Note it is NON-NULL in the schema: the generated TypeScript type is
+  # `profile: { name: string }`, so `room.profile.name` type-checks and compiles.
+  # That is the trap — the type says non-null, but GC makes it absent at runtime.
+  profile: Profile!
+}
+
+type Profile {
+  id: ID!
+  name: String!
+}
