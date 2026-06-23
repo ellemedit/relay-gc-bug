@@ -130,7 +130,7 @@ const roomRec = environment.getStore().getSource().get("1");
 assert(roomRec != null, "[after GC] Room:1 SURVIVES (still reachable via retained QA)");
 assert(
   profileRec == null,
-  "[after GC] Profile:p1 COLLECTED out from under the live subscription (the BUG; Patch S keeps it)",
+  "[after GC] Profile:p1 COLLECTED out from under the live subscription (the BUG; the runtime fix keeps it)",
 );
 
 // A reader still interested in the detail data now gets a PARTIAL snapshot.

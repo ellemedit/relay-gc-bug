@@ -7,7 +7,12 @@ still reading it**. The surviving parent then yields a *partial read*
 (`isMissingData: true`), and unguarded nested access throws a `TypeError` — a
 blank "white screen" crash.
 
-The proposed fix lives in the sibling repo **[`relay-gc-patch`](https://github.com/ellemedit/relay-gc-patch)**.
+The fix is a facebook/relay source change — **[`ellemedit/relay#1`](https://github.com/ellemedit/relay/pull/1)**:
+`RelayModernStore._collect` additionally marks every record in each active
+subscription's `snapshot.seenRecords`, so GC can't collect data a live reader still
+needs (gated to the standard GC path; the experimental retain-within-TTL Activity
+mode keeps its time-based release). This repo is **verified fixed** by that change —
+see [Verified fixed](#verified-fixed-by-ellemeditrelay1) below.
 
 ## TL;DR
 
@@ -60,7 +65,7 @@ re-read is partial. Verified output:
 ✅ [before] Profile:p1 record present in store
 ✅ [before] the live detail subscription's seenRecords includes Profile:p1
 ✅ [after GC] Room:1 SURVIVES (still reachable via retained QA)
-✅ [after GC] Profile:p1 COLLECTED out from under the live subscription (the BUG; Patch S keeps it)
+✅ [after GC] Profile:p1 COLLECTED out from under the live subscription (the BUG; the runtime fix keeps it)
 ✅ [after GC] detail re-read is PARTIAL (isMissingData=true)
 ✅ [after GC] room.profile === undefined (the partial read)
 ✅ [after GC] unguarded `room.profile.name` throws TypeError -> Cannot read properties of undefined (reading 'name')
@@ -94,13 +99,30 @@ npm start         # http://localhost:3000
    `Cannot read properties of undefined (reading 'name')`). The partial state is
    created by GC; the store write is only the trigger that forces the re-read.
 
+## Verified fixed by [`ellemedit/relay#1`](https://github.com/ellemedit/relay/pull/1)
+
+Building `relay-runtime` from that branch (Relay's own `gulp dist`) and dropping the
+compiled package into this app's `node_modules/relay-runtime` makes both
+reproductions pass cleanly:
+
+- **Store level** — `Profile:p1` **survives** GC, the detail re-read stays complete
+  (`isMissingData: false`, `room.profile.name === 'Alice'`), and the unguarded access
+  no longer throws.
+- **Browser** — the same *"release detail query + GC"* click no longer crashes: no
+  error boundary, `<Detail>` keeps rendering `profile.name = Alice`, zero page errors.
+
+The fix only ever *adds* records to the GC keep-set (those a live subscription is
+reading), so disposing the subscription lets the records be collected again — no
+memory leak (pinned by an over-retention test in the fix PR).
+
 ## Why "only an app restart fixes it" in production
 
 The Relay `Environment`/`Store` is a **module singleton** (`src/relay.ts`). Next's
 error boundary `reset()` only re-renders the React subtree; it never rebuilds the
 store. So the same partial record is read again and throws again. Only a full
-document reload (app restart) rebuilds the store. (The fix repo also wires the
-error boundary to rebuild the Relay environment as a recovery layer.)
+document reload (app restart) rebuilds the store. (The `ellemedit/relay#1` runtime
+fix prevents the partial read in the first place; an app-level mitigation is to
+rebuild the Relay environment from the error boundary so an in-app refresh recovers.)
 
 ## Determinism knobs
 
